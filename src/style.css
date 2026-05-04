@@ -1,0 +1,227 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--lk-bg, transparent);
+  color: var(--lk-text, #111827);
+  font-family: var(--lk-font, inherit);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  padding: 0;
+}
+
+/* ── Form layout ─────────────────────────────────────────── */
+
+.lk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lk-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 480px) {
+  .lk-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Field ───────────────────────────────────────────────── */
+
+.lk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lk-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lk-muted, #6b7280);
+}
+
+.lk-req {
+  color: var(--lk-primary, #111827);
+  margin-left: 2px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────── */
+
+.lk-input,
+.lk-select,
+.lk-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--lk-border, #e5e7eb);
+  border-radius: var(--lk-radius, 6px);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--lk-text, #111827);
+  background: transparent;
+  outline: none;
+  transition: border-color 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.lk-input:focus,
+.lk-select:focus,
+.lk-textarea:focus {
+  border-color: var(--lk-primary, #111827);
+}
+
+.lk-input:disabled,
+.lk-select:disabled,
+.lk-textarea:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lk-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.lk-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* ── Submit button ───────────────────────────────────────── */
+
+.lk-btn {
+  width: 100%;
+  padding: 11px 20px;
+  background: var(--lk-primary, #111827);
+  color: var(--lk-primary-fg, #ffffff);
+  border: none;
+  border-radius: var(--lk-radius, 6px);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.lk-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.lk-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Slot picker states ───────────────────────────────────── */
+
+.lk-slots-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--lk-muted, #6b7280);
+  font-size: 14px;
+  padding: 9px 0;
+}
+
+.lk-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--lk-border, #e5e7eb);
+  border-top-color: var(--lk-primary, #111827);
+  border-radius: 50%;
+  animation: lk-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes lk-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Messages ────────────────────────────────────────────── */
+
+.lk-msg-muted {
+  font-size: 13px;
+  color: var(--lk-muted, #6b7280);
+  line-height: 1.5;
+}
+
+.lk-msg-error {
+  font-size: 13px;
+  color: #dc2626;
+  line-height: 1.5;
+}
+
+.lk-note {
+  font-size: 12px;
+  color: var(--lk-muted, #6b7280);
+  margin-top: -4px;
+}
+
+/* ── Honeypot (bot trap) ─────────────────────────────────── */
+
+.lk-hp {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Loading / global error ──────────────────────────────── */
+
+.lk-loading {
+  font-size: 14px;
+  color: var(--lk-muted, #6b7280);
+  padding: 8px 0;
+}
+
+/* ── Success state ───────────────────────────────────────── */
+
+.lk-success {
+  padding: 24px 0 16px;
+  text-align: center;
+}
+
+.lk-success-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  background: var(--lk-primary, #111827);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lk-success-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--lk-text, #111827);
+  margin-bottom: 8px;
+}
+
+.lk-success-body {
+  font-size: 14px;
+  color: var(--lk-muted, #6b7280);
+  line-height: 1.6;
+  max-width: 340px;
+  margin: 0 auto;
+}

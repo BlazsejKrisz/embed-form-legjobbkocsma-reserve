@@ -1,0 +1,16 @@
+{
+  "name": "embed-form-legjobbkocsma-reserve",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:embed": "tsc && vite build --config vite.config.embed.ts",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.3.0"
+  }
+}
