@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:embed": "tsc && vite build --config vite.config.embed.ts",
+    "build:embed": "tsc && vite build --config vite.config.embed.ts && node scripts/post-build.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {

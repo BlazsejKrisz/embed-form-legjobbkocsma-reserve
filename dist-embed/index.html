@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Embed – Tesztoldal</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f3f4f6;
+        margin: 0;
+        padding: 32px 16px;
+      }
+
+      h1 {
+        font-size: 15px;
+        font-weight: 600;
+        color: #6b7280;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        margin: 0 0 32px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+        gap: 32px;
+        max-width: 1200px;
+      }
+
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 28px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      }
+
+      .card--dark {
+        background: #1a1a2e;
+      }
+
+      .card h2 {
+        font-size: 12px;
+        font-weight: 600;
+        color: #9ca3af;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        margin: 0 0 20px;
+      }
+
+      .card--dark h2 {
+        color: #6b7280;
+      }
+
+      .test-red {
+        --lk-primary: #e74c3c;
+        --lk-radius: 12px;
+      }
+
+      .test-dark {
+        --lk-bg: #1a1a2e;
+        --lk-text: #f0f0f8;
+        --lk-muted: #8888aa;
+        --lk-border: #2e2e4e;
+        --lk-primary: #7c3aed;
+        --lk-primary-fg: #ffffff;
+        --lk-radius: 8px;
+      }
+
+      .test-reorder .lk-field--message { order: -1; }
+      .test-reorder .lk-field--phone   { display: none; }
+
+      .card--iframe {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .card--iframe h2 {
+        padding: 20px 28px 0;
+      }
+
+      .card--iframe iframe {
+        display: block;
+        width: 100%;
+        border: none;
+        min-height: 500px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Embed tesztoldal</h1>
+
+    <div class="grid">
+
+      <div class="card">
+        <h2>Alap – egyetlen venue</h2>
+        <div data-lk-venue="stifler-kert"></div>
+      </div>
+
+      <div class="card">
+        <h2>Piros téma + lekerekített sarkok</h2>
+        <div class="test-red" data-lk-venue="legjobb-kocsma"></div>
+      </div>
+
+      <div class="card card--dark">
+        <h2>Sötét téma</h2>
+        <div class="test-dark" data-lk-venue="legjobb-kocsma"></div>
+      </div>
+
+      <div class="card">
+        <h2>Átrendezett mezők (megjegyzés elöl, telefon elrejtve)</h2>
+        <div class="test-reorder" data-lk-venue="legjobb-kocsma"></div>
+      </div>
+
+      <div class="card">
+        <h2>Venue group (helyszínválasztóval)</h2>
+        <div data-lk-group="legjobb-group"></div>
+      </div>
+
+      <div class="card">
+        <h2>Valós idejű szabad időpontok (slots=1)</h2>
+        <div data-lk-venue="stifler-kert" data-lk-slots="1"></div>
+      </div>
+
+      <div class="card card--iframe">
+        <h2>iframe – deployed (Vercel)</h2>
+        <iframe
+          id="lk-iframe"
+          src="/form.html"
+          scrolling="no"
+          allowtransparency="true">
+        </iframe>
+      </div>
+
+    </div>
+
+    <script>
+      window.addEventListener('message', function(e) {
+        if (e.data?.type === 'lk:resize') {
+          document.getElementById('lk-iframe').style.height = e.data.height + 'px'
+        }
+      })
+    </script>
+
+    <script src="/embed.js"></script>
+  </body>
+</html>
