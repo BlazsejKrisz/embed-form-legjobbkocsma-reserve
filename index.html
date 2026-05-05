@@ -3,8 +3,69 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Foglalás</title>
+    <title>Asztalt foglalok – Stifler Kert</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Georgia, serif;
+        background: #faf9f7;
+        color: #1a1a1a;
+      }
+
+      header {
+        padding: 40px 24px 32px;
+        text-align: center;
+        border-bottom: 1px solid #e8e5e0;
+      }
+
+      header h1 {
+        font-size: 28px;
+        font-weight: normal;
+        letter-spacing: .04em;
+      }
+
+      header p {
+        margin-top: 8px;
+        font-size: 14px;
+        color: #7a7267;
+      }
+
+      main {
+        max-width: 560px;
+        margin: 48px auto;
+        padding: 0 24px 80px;
+      }
+
+      main h2 {
+        font-size: 20px;
+        font-weight: normal;
+        margin-bottom: 24px;
+        color: #1a1a1a;
+      }
+
+      [data-lk-venue] {
+        --lk-primary: #2d5016;
+        --lk-primary-fg: #ffffff;
+        --lk-radius: 6px;
+        --lk-font: Georgia, serif;
+        --lk-border: #d8d4cc;
+        --lk-text: #1a1a1a;
+        --lk-muted: #7a7267;
+      }
+    </style>
   </head>
   <body>
+    <header>
+      <h1>Stifler Kert</h1>
+      <p>1234 Budapest, Példa utca 1.</p>
+    </header>
+
+    <main>
+      <h2>Asztalt foglalok</h2>
+      <div data-lk-venue="stifler-kert"></div>
+    </main>
+
+    <script src="https://embed-form-legjobbkocsma-reserve.vercel.app/embed.js"></script>
   </body>
 </html>

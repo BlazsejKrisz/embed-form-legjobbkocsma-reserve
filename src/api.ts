@@ -31,6 +31,11 @@ export interface ReservationPayload {
     phone?: string
   }
   message?: string
+  consents?: {
+    reservation_data_processing: boolean
+    reservation_data_processing_text: string
+    privacy_url?: string
+  }
   _hp?: string
 }
 

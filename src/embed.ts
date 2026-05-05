@@ -22,6 +22,7 @@ interface AppConfig {
   useSlots: boolean
   open: string
   close: string
+  privacyUrl: string | null
 }
 
 function mountApp(container: HTMLElement, cfg: AppConfig): void {
@@ -30,6 +31,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   const VENUE_GROUP_PARAM = cfg.venueGroup
   const OPEN_PARAM = cfg.open
   const CLOSE_PARAM = cfg.close
+  const PRIVACY_URL = cfg.privacyUrl
 
   // ── State ─────────────────────────────────────────────────────────────
 
@@ -54,6 +56,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   let slotsRequestId = 0
 
   let honeypot = ''
+  let gdprAccepted = false
   let venueNotFound = false
   let venueGroupNotFound = false
 
@@ -86,6 +89,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (!selectedVenueSlug) return false
     if (!date) return false
     if (!time) return false
+    if (!gdprAccepted) return false
     const ps = Number(partySize)
     if (!partySize || !Number.isInteger(ps) || ps < 1 || ps > 500) return false
     if (!fullName.trim() || fullName.trim().length > 100) return false
@@ -141,6 +145,33 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     container.dispatchEvent(new CustomEvent(type, { detail, bubbles: true }))
     // Also fire postMessage for iframe consumers
     window.parent.postMessage({ type, ...detail }, '*')
+  }
+
+  async function sha256Hex(value: string): Promise<string | null> {
+    if (!window.crypto?.subtle) return null
+    const bytes = new TextEncoder().encode(value)
+    const digest = await window.crypto.subtle.digest('SHA-256', bytes)
+    return Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+  }
+
+  async function buildEnhancedConversions(): Promise<Record<string, string>> {
+    const out: Record<string, string> = {}
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedPhone = phone.trim().replace(/[^\d+]/g, '')
+
+    if (normalizedEmail) {
+      const emailHash = await sha256Hex(normalizedEmail)
+      if (emailHash) out.email_sha256 = emailHash
+    }
+
+    if (normalizedPhone) {
+      const phoneHash = await sha256Hex(normalizedPhone)
+      if (phoneHash) out.phone_sha256 = phoneHash
+    }
+
+    return out
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -247,6 +278,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     form.appendChild(row2)
 
     form.appendChild(buildMessageField())
+    form.appendChild(buildGdprField())
 
     const note = document.createElement('p')
     note.className = 'lk-note'
@@ -476,6 +508,43 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     return wrap
   }
 
+  function buildGdprField(): HTMLElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'lk-consent lk-consent--gdpr'
+
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.className = 'lk-checkbox'
+    input.id = 'lk-gdpr'
+    input.checked = gdprAccepted
+
+    const label = document.createElement('label')
+    label.className = 'lk-consent-label'
+    label.htmlFor = 'lk-gdpr'
+
+    label.append('Elfogadom, hogy a foglalás kezeléséhez a megadott adataimat kezeljék')
+    if (PRIVACY_URL) {
+      label.append(' az ')
+      const link = document.createElement('a')
+      link.href = PRIVACY_URL
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = 'adatkezelési tájékoztató'
+      label.appendChild(link)
+      label.append(' szerint')
+    }
+    label.append('.')
+
+    input.addEventListener('change', () => {
+      gdprAccepted = input.checked
+      updateSubmitBtn()
+    })
+
+    wrap.appendChild(input)
+    wrap.appendChild(label)
+    return wrap
+  }
+
   // ── Targeted updates ──────────────────────────────────────────────────
 
   function updateTimeContent(): void {
@@ -636,6 +705,11 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
         ...(phone.trim() ? { phone: sanitize(phone, 20) } : {}),
       },
       ...(message.trim() ? { message: sanitize(message, 1000) } : {}),
+      consents: {
+        reservation_data_processing: true,
+        reservation_data_processing_text: 'Elfogadom, hogy a foglalás kezeléséhez a megadott adataimat kezeljék.',
+        ...(PRIVACY_URL ? { privacy_url: PRIVACY_URL } : {}),
+      },
       _hp: honeypot,
     }
 
@@ -645,7 +719,14 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       result = res
 
       track('submit', { status: res.status })
-      emit('lk:confirmed', { reservation_id: res.reservation_id, status: res.status })
+      const enhancedConversions = await buildEnhancedConversions()
+      emit('lk:confirmed', {
+        reservation_id: res.reservation_id,
+        status: res.status,
+        ...(Object.keys(enhancedConversions).length > 0
+          ? { enhanced_conversions: enhancedConversions }
+          : {}),
+      })
 
       render()
     } catch (err: unknown) {
@@ -708,6 +789,7 @@ function autoMount(): void {
       useSlots: el.dataset.lkSlots === '1',
       open: el.dataset.lkOpen ?? '10:00',
       close: el.dataset.lkClose ?? '23:00',
+      privacyUrl: el.dataset.lkPrivacyUrl ?? null,
     })
   })
 }

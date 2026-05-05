@@ -171,6 +171,34 @@ body {
   margin-top: -4px;
 }
 
+/* ── Consent ─────────────────────────────────────────────── */
+
+.lk-consent {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 9px;
+  align-items: start;
+}
+
+.lk-checkbox {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--lk-primary, #111827);
+}
+
+.lk-consent-label {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--lk-muted, #6b7280);
+}
+
+.lk-consent-label a {
+  color: var(--lk-primary, #111827);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ── Honeypot (bot trap) ─────────────────────────────────── */
 
 .lk-hp {

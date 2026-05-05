@@ -59,6 +59,7 @@ A konténer `<div>`-en `data-lk-*` attribútumokkal adod meg a beállításokat.
 | `data-lk-slots`  | nem      | `0`             | `1` esetén valós idejű szabad időpont-lekérdezés az API-ból                               |
 | `data-lk-open`   | nem      | `10:00`         | Nyitási időpont — ettől jelennek meg az időpontok                                          |
 | `data-lk-close`  | nem      | `23:00`         | Zárási időpont — utolsó foglalható időpont: `zárás − minimális tartam` (venue beállítás)  |
+| `data-lk-privacy-url` | nem | – | Adatkezelési tájékoztató URL-je; ha meg van adva, a kötelező adatkezelési checkbox szövegében linkként jelenik meg |
 
 \* `data-lk-venue` vagy `data-lk-group` közül legalább egyiket meg kell adni. Ha egyik sem szerepel, az összes aktív helyszín betöltődik és megjelenik a helyszínválasztó.
 
@@ -135,6 +136,7 @@ Mivel a form az oldal DOM-jában él, bármilyen CSS szabály működik.
 | Tájékoztató szöveg               | `.lk-msg-muted`     |
 | Hibaüzenet                       | `.lk-msg-error`     |
 | E-mail/telefon megjegyzés        | `.lk-note`          |
+| Adatkezelési checkbox blokk      | `.lk-consent--gdpr` |
 | Sikerképernyő wrapper            | `.lk-success`       |
 | Sikerképernyő ikon               | `.lk-success-icon`  |
 | Sikerképernyő cím                | `.lk-success-title` |
@@ -178,6 +180,7 @@ Foglalás után két módon tüzel:
 ```js
 document.querySelector('[data-lk-venue]').addEventListener('lk:confirmed', function(e) {
   console.log(e.detail.reservation_id, e.detail.status)
+  console.log(e.detail.enhanced_conversions?.email_sha256)
 
   // Google Analytics 4
   gtag('event', 'purchase', { transaction_id: e.detail.reservation_id })
@@ -194,6 +197,15 @@ window.addEventListener('message', function(e) {
     gtag('event', 'purchase', { transaction_id: e.data.reservation_id })
   }
 })
+```
+
+Ha a vendég megadott e-mailt vagy telefonszámot, az esemény `detail.enhanced_conversions` alatt SHA-256 hashelt értékeket is tartalmazhat:
+
+```js
+{
+  email_sha256: '...',
+  phone_sha256: '...'
+}
 ```
 
 ### Foglalás státuszok
@@ -216,6 +228,7 @@ Az embed kliens oldali védelmi rétegeket tartalmaz:
 - **Input szanitizáció** — kontroll karakterek (`\x00–\x1F`) eltávolítása minden mezőből küldés előtt
 - **Maxlength kényszer** — HTML attribútum szinten: név 100, e-mail 254, telefon 20, megjegyzés 1000 karakter
 - **Formátum validáció** — e-mail és telefonszám regex-szel ellenőrzött, hibás formátumnál a gomb le van tiltva
+- **Kötelező adatkezelési hozzájárulás** — a foglalás csak az adatkezelési checkbox elfogadása után küldhető el; a payload tartalmazza a foglalási adatkezeléshez adott hozzájárulást
 - **Honeypot** — egy CSS-sel elrejtett, botoktól csapdaként működő mező; ha ki van töltve, a backend csendben elveti a kérést
 - **Egész létszám** — a `party_size` mező csak 1–500 közötti egész számot fogad el
 
