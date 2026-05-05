@@ -10,8 +10,9 @@ Beágyazható foglalási űrlap külső weboldalakhoz (WordPress, Webflow, egyed
 2. [Konfiguráció – data attribútumok](#2-konfiguráció--data-attribútumok)
 3. [CSS testreszabás](#3-css-testreszabás)
 4. [Események](#4-események)
-5. [Példák](#5-példák)
-6. [Fejlesztés és build](#6-fejlesztés-és-build)
+5. [Biztonság](#5-biztonság)
+6. [Példák](#6-példák)
+7. [Fejlesztés és build](#7-fejlesztés-és-build)
 
 ---
 
@@ -139,6 +140,32 @@ Mivel a form az oldal DOM-jában él, bármilyen CSS szabály működik.
 | Sikerképernyő cím                | `.lk-success-title` |
 | Sikerképernyő szöveg             | `.lk-success-body`  |
 
+### Mezők elrejtése
+
+Bármely mező elrejthető `display: none`-nal. Ha egy mező el van rejtve, az input értéke üres marad, és a validáció nem várja meg az értéket (opcionális mezőknél).
+
+```css
+/* Megjegyzés mező elrejtése */
+.lk-field--message { display: none; }
+
+/* Helyszínválasztó elrejtése (ha data-lk-group van beállítva, de nem kell választó) */
+.lk-field--venue { display: none; }
+```
+
+### Mezők sorrendjének megváltoztatása
+
+A `#lk-form` flexbox (`flex-direction: column`), ezért az `order` property-vel bármely mező bárhova helyezhető:
+
+```css
+/* Megjegyzés mező a form tetejére */
+.lk-field--message { order: -1; }
+
+/* Név mező az utolsó helyre */
+.lk-field--full-name { order: 99; }
+```
+
+Alapértelmezett sorrend (DOM-ban): helyszín → dátum+létszám sor → időpont → teljes név → e-mail+telefon sor → megjegyzés → küldés gomb.
+
 ---
 
 ## 4. Események
@@ -160,7 +187,7 @@ document.querySelector('[data-lk-venue]').addEventListener('lk:confirmed', funct
 })
 ```
 
-**2. `window.postMessage`** (backward compatibility, ha iframe-ben használod):
+**2. `window.postMessage`** (ha iframe-ben is használod):
 ```js
 window.addEventListener('message', function(e) {
   if (e.data?.type === 'lk:confirmed') {
@@ -180,7 +207,36 @@ Mindkét esetben HTTP 201 válasz érkezik, és a vendég visszaigazolást kap.
 
 ---
 
-## 5. Példák
+## 5. Biztonság
+
+### Amit az embed véd
+
+Az embed kliens oldali védelmi rétegeket tartalmaz:
+
+- **Input szanitizáció** — kontroll karakterek (`\x00–\x1F`) eltávolítása minden mezőből küldés előtt
+- **Maxlength kényszer** — HTML attribútum szinten: név 100, e-mail 254, telefon 20, megjegyzés 1000 karakter
+- **Formátum validáció** — e-mail és telefonszám regex-szel ellenőrzött, hibás formátumnál a gomb le van tiltva
+- **Honeypot** — egy CSS-sel elrejtett, botoktól csapdaként működő mező; ha ki van töltve, a backend csendben elveti a kérést
+- **Egész létszám** — a `party_size` mező csak 1–500 közötti egész számot fogad el
+
+### Amit a backendnek kell megcsinálni
+
+Az embed önmagában nem elég — a valódi védelem a backend feladata:
+
+| Védelmi réteg | Leírás |
+|---|---|
+| **CORS + per-venue domain whitelist** | Minden helyszín regisztrálja az engedélyezett domaineket; a backend az `Origin` headert ellenőrzi |
+| **Rate limiting** | IP-nként és e-mail-enként korlátozott kérésszám percenként/naponta |
+| **Honeypot ellenőrzés** | Ha `_hp` mező nem üres a payloadban → csendesen elveti (HTTP 200, de nem menti) |
+| **Parameterized query** | SQL injection ellen az ORM/adatbázis réteg véd, nem az embed |
+
+### Amit az embed nem tud megvédeni
+
+Bárki, aki megnézi a bundle-t, látja az API URL-t, és direktben hívhatja curl-lel — a frontend validációt megkerülve. Ezért a rate limiting és a domain whitelist nélkülözhetetlen a backenden.
+
+---
+
+## 6. Példák
 
 ### Alap beágyazás
 
@@ -247,272 +303,11 @@ Mindkét esetben HTTP 201 válasz érkezik, és a vendég visszaigazolást kap.
 <script src="https://embed.legjobbkocsma.hu/embed.js"></script>
 ```
 
----
-
-## 6. Fejlesztés és build
-
-### Környezeti változók
-
-Hozz létre egy `.env` fájlt a projekt gyökerében (a `.env.example` alapján):
-
-```
-VITE_API_BASE=https://reservations.legjobbkocsma.hu/api/public
-```
-
-### Parancsok
-
-```bash
-# Függőségek telepítése
-npm install
-
-# Fejlesztői szerver indítása (http://localhost:5173)
-npm run dev
-
-# iframe-alapú statikus build (kimenet: dist/)
-npm run build
-
-# Script-alapú embed build (kimenet: dist-embed/embed.js)
-npm run build:embed
-
-# Build előnézete lokálisan
-npm run preview
-```
-
-### Tesztelés lokálisan
-
-Nyisd meg `http://localhost:5173` — az `index.html` tartalmaz egy tesztkonténert `data-lk-venue` attribútummal, amelybe az embed automatikusan tölt.
-
-### Deploy
-
-A `dist-embed/embed.js` fájlt töltsd fel statikus hostingra:
-
-- **Vercel / Netlify / Cloudflare Pages:** kösd össze a GitHub repót, build command: `npm run build:embed`, output: `dist-embed`
-
-A deploy után kapott `embed.js` URL kerül a `<script src="...">` tagbe.
-|----------------|--------------------|-----------------|---------------------------------------------------------------------------------------------|
-| `venue`        | helyszín slug      | –               | Előre beállít egy helyszínt, elrejti a helyszínválasztót                                    |
-| `venue_group`  | csoport slug       | –               | Csak az adott csoporthoz tartozó helyszíneket tölti be, megjelenik a helyszínválasztó       |
-| `slots`        | `1` vagy `0`       | `0`             | `1` esetén valós idejű szabad időpont-lekérdezés az API-ból                                |
-| `open`         | `ÓÓ:PP` formátum   | `10:00`         | Nyitási időpont – ettől az időponttól jelennek meg az időpontok a legördülőben              |
-| `close`        | `ÓÓ:PP` formátum   | `23:00`         | Zárási időpont – az utolsó foglalható időpont: `zárás – minimális tartam` (venue beállítás) |
-
-### Helyszín megadása
-
-**Egyetlen helyszín** (helyszínválasztó elrejtve):
-```
-src="https://embed.legjobbkocsma.hu/?venue=legjobb-kocsma"
-```
-
-**Helyszíncsoport** (helyszínválasztó megjelenik, csak az adott csoport helyszíneivel):
-```
-src="https://embed.legjobbkocsma.hu/?venue_group=legjobb-group"
-```
-
-**Minden aktív helyszín** (sem `venue`, sem `venue_group` nincs megadva – helyszínválasztó megjelenik):
-```
-src="https://embed.legjobbkocsma.hu/"
-```
-
-### Időpontok és nyitvatartás
-
-Az időpontválasztó 30 perces lépésekkel generálja az időpontokat `open` és `close` között. Az utolsó foglalható időpont számítása:
-
-```
-utolsó időpont = close − min_duration_minutes (helyszín beállításból)
-```
-
-Példa: ha `close=23:00` és a helyszín minimális tartama 60 perc, az utolsó időpont **22:00**.
-
-Ha a mai napot választják, az `min_notice_minutes` (helyszín beállítás) percen belüli időpontok automatikusan ki vannak szűrve.
-
-### Valós idejű szabad időpontok (`slots=1`)
-
-Ha a `slots=1` paraméter meg van adva, az időpontválasztó az API-ból kéri le a szabad időpontokat a kiválasztott dátum és létszám alapján. Ha az API nem ad vissza szabad időpontot, vagy hiba lép fel, az űrlap visszaesik a generált időpontválasztóra.
-
----
-
-## 4. CSS testreszabás
-
-Az iframe-be ágyazott tartalom CSS osztályokkal és ID-kkel rendelkezik, amelyek segítségével a fogadó oldal stíluslapjából **nem** lehet közvetlenül célozni (cross-origin korlát). Az egyedi stílusokat az `src` URL témaparaméterei szabályozzák.
-
-Ha viszont az embed-et saját domain alatt üzemeltetik (pl. subdomain-en), vagy CSS custom property-k átadása elegendő, az alábbi szelektorok állnak rendelkezésre az embed belső CSS-éhez.
-
-### Strukturális szelektorok
-
-| Elem                        | Szelektor              |
-|-----------------------------|------------------------|
-| Teljes form                 | `#lk-form`             |
-| Dátum + létszám sor         | `.lk-row--date-party`  |
-| E-mail + telefon sor        | `.lk-row--contact`     |
-
-### Mező wrapperek (label + input együtt)
-
-| Mező           | Szelektor               |
-|----------------|-------------------------|
-| Helyszín       | `.lk-field--venue`      |
-| Dátum          | `.lk-field--date`       |
-| Létszám        | `.lk-field--party-size` |
-| Időpont        | `.lk-field--time`       |
-| Teljes név     | `.lk-field--full-name`  |
-| E-mail         | `.lk-field--email`      |
-| Telefon        | `.lk-field--phone`      |
-| Megjegyzés     | `.lk-field--message`    |
-| Küldés terület | `.lk-field--submit`     |
-
-### Feliratok (label)
-
-Ugyanolyan névkonvenció, `lk-label--` előtaggal:
-
-`.lk-label--venue`, `.lk-label--date`, `.lk-label--party-size`, `.lk-label--time`, `.lk-label--full-name`, `.lk-label--email`, `.lk-label--phone`, `.lk-label--message`
-
-### Input elemek (ID-k alapján)
-
-| Elem                     | Szelektor       |
-|--------------------------|-----------------|
-| Helyszínválasztó         | `#lk-venue`     |
-| Dátummező                | `#lk-date`      |
-| Létszám                  | `#lk-party`     |
-| Időpont (select)         | `#lk-time`      |
-| Teljes név               | `#lk-full-name` |
-| E-mail                   | `#lk-email`     |
-| Telefon                  | `#lk-phone`     |
-| Megjegyzés               | `#lk-message`   |
-| Küldés gomb              | `#lk-submit`    |
-
-### Egyéb elemek
-
-| Elem                              | Szelektor            |
-|-----------------------------------|----------------------|
-| Küldés gomb                       | `.lk-btn`            |
-| API-ból betöltött időpont select  | `.lk-select--slots`  |
-| Generált időpont select           | `.lk-select--time`   |
-| Betöltési spinner                 | `.lk-spinner`        |
-| Tájékoztató szöveg (szürke)       | `.lk-msg-muted`      |
-| Hibaüzenet (piros)                | `.lk-msg-error`      |
-| E-mail/telefon megjegyzés         | `.lk-note`           |
-| Sikerképernyő wrapper             | `.lk-success`        |
-| Sikerképernyő ikon                | `.lk-success-icon`   |
-| Sikerképernyő cím                 | `.lk-success-title`  |
-| Sikerképernyő szöveg              | `.lk-success-body`   |
-
----
-
-## 5. postMessage események
-
-Az embed két eseményt küld a szülő oldalnak `window.parent.postMessage` segítségével.
-
-### `lk:resize` – magasság frissítés
-
-Az iframe magasságát automatikusan igazítja a tartalom változásához. A fogadó oldalon a [Beágyazás](#1-beágyazás) szekcióban lévő script kezeli.
-
-```js
-{ type: 'lk:resize', height: 420 }
-```
-
-### `lk:confirmed` – sikeres foglalás
-
-Foglalás beküldése után azonnal tüzel. Felhasználható konverziókövetésre (Google Analytics, Meta Pixel stb.).
-
-```js
-{ type: 'lk:confirmed', reservation_id: 42, status: 'confirmed' }
-// vagy
-{ type: 'lk:confirmed', reservation_id: 43, status: 'pending_manual_review' }
-```
-
-**Teljes példa konverziókövetéssel:**
-```html
-<script>
-  window.addEventListener('message', function(e) {
-    if (!e.data) return;
-
-    if (e.data.type === 'lk:resize') {
-      document.getElementById('legjobbkocsma-booking').style.height = e.data.height + 'px';
-    }
-
-    if (e.data.type === 'lk:confirmed') {
-      // Google Analytics 4
-      gtag('event', 'purchase', {
-        transaction_id: e.data.reservation_id
-      });
-
-      // Meta Pixel
-      fbq('track', 'Lead');
-    }
-  });
-</script>
-```
-
-### Foglalás státuszok
-
-| Státusz                  | Jelentés                                                                                  |
-|--------------------------|-------------------------------------------------------------------------------------------|
-| `confirmed`              | Asztal automatikusan kiosztva, visszaigazoló e-mail elküldve                              |
-| `pending_manual_review`  | Nincs szabad asztal, a kolléga kézzel kezeli – ez is sikeres foglalás, nem hiba           |
-
-Mindkét esetben HTTP 201 válasz érkezik, és a vendég visszaigazolást kap.
-
----
-
-## 6. Példák
-
-### Egyszerű beágyazás, egy helyszínnel
-
-```html
-<iframe
-  id="legjobbkocsma-booking"
-  src="https://embed.legjobbkocsma.hu/?venue=legjobb-kocsma&open=12:00&close=23:00"
-  style="border:none; width:100%; overflow:hidden; display:block;"
-  scrolling="no"
-  allowtransparency="true">
-</iframe>
-```
-
-### Témázott, piros gombokkal, lekerekített sarkokkal
-
-```html
-<iframe
-  id="legjobbkocsma-booking"
-  src="https://embed.legjobbkocsma.hu/?venue=legjobb-kocsma&primary=%23e74c3c&primary_fg=%23ffffff&radius=12px&font=Inter&open=12:00&close=23:00"
-  style="border:none; width:100%; overflow:hidden; display:block;"
-  scrolling="no"
-  allowtransparency="true">
-</iframe>
-```
-
-### Sötét hátterű oldalon
-
-```html
-<iframe
-  id="legjobbkocsma-booking"
-  src="https://embed.legjobbkocsma.hu/?venue=legjobb-kocsma&bg=%231a1a2e&text=%23ffffff&muted=%23a0a0b0&border=%23333355&primary=%23e74c3c&open=12:00&close=23:00"
-  style="border:none; width:100%; overflow:hidden; display:block;"
-  scrolling="no"
-  allowtransparency="true">
-</iframe>
-```
-
-### Valós idejű szabad időpontokkal (`slots=1`)
-
-```html
-<iframe
-  id="legjobbkocsma-booking"
-  src="https://embed.legjobbkocsma.hu/?venue=legjobb-kocsma&slots=1&open=12:00&close=23:00"
-  style="border:none; width:100%; overflow:hidden; display:block;"
-  scrolling="no"
-  allowtransparency="true">
-</iframe>
-```
-
-### Helyszíncsoport, helyszínválasztóval
-
-```html
-<iframe
-  id="legjobbkocsma-booking"
-  src="https://embed.legjobbkocsma.hu/?venue_group=legjobb-group&open=12:00&close=23:00"
-  style="border:none; width:100%; overflow:hidden; display:block;"
-  scrolling="no"
-  allowtransparency="true">
-</iframe>
+### Átrendezett mezők (megjegyzés előre, telefon elrejtve)
+
+```css
+.lk-field--message { order: -1; }
+.lk-field--phone   { display: none; }
 ```
 
 ---
@@ -536,8 +331,8 @@ npm install
 # Fejlesztői szerver indítása (http://localhost:5173)
 npm run dev
 
-# Produkciós build (kimenet: dist/)
-npm run build
+# Script-alapú embed build (kimenet: dist-embed/embed.js)
+npm run build:embed
 
 # Build előnézete lokálisan
 npm run preview
@@ -545,18 +340,12 @@ npm run preview
 
 ### Tesztelés lokálisan
 
-A fejlesztői szerveren az URL paramétereket közvetlenül a böngészőben lehet tesztelni:
-
-```
-http://localhost:5173/?venue=legjobb-kocsma&primary=%23e74c3c&open=12:00&close=23:00
-```
+Nyisd meg `http://localhost:5173` — az `index.html` tartalmaz egy tesztkonténert `data-lk-venue` attribútummal, amelybe az embed automatikusan tölt.
 
 ### Deploy
 
-A `dist/` mappa tartalma egy statikus weboldal, amely bármely statikus hostingra feltölthető:
+A `dist-embed/embed.js` fájlt töltsd fel statikus hostingra:
 
-- **Vercel:** `vercel deploy`
-- **Netlify:** húzd be a `dist/` mappát a Netlify felületre
-- **Cloudflare Pages:** kösd össze a GitHub repót, build command: `npm run build`, output: `dist`
+- **Vercel / Netlify / Cloudflare Pages:** kösd össze a GitHub repót, build command: `npm run build:embed`, output: `dist-embed`
 
-A deploy után kapott URL kerül az iframe `src` attribútumába.
+A deploy után kapott `embed.js` URL kerül a `<script src="...">` tagbe.

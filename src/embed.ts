@@ -38,7 +38,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   let venuesError = false
 
   let selectedVenueSlug = VENUE_PARAM ?? ''
-  let date = ''
+  let date = todayStr()
   let time = ''
   let partySize = ''
   let fullName = ''
@@ -54,6 +54,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   let slotsRequestId = 0
 
   let honeypot = ''
+  let venueNotFound = false
+  let venueGroupNotFound = false
 
   let submitting = false
   let result: ReservationResult | null = null
@@ -118,8 +120,10 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       return h * 60 + m
     }
 
-    const openMin = toMin(OPEN_PARAM)
-    const lastSlotMin = toMin(CLOSE_PARAM) - minDuration
+    const open = venue?.venue_settings.open_time ?? OPEN_PARAM
+    const close = venue?.venue_settings.close_time ?? CLOSE_PARAM
+    const openMin = toMin(open)
+    const lastSlotMin = toMin(close) - minDuration
 
     const now = new Date()
     const isToday = date !== '' && date === todayStr()
@@ -149,7 +153,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       return
     }
 
-    if (!VENUE_PARAM && venuesLoading) {
+    if (venuesLoading) {
       const el = document.createElement('div')
       el.className = 'lk-loading'
       el.textContent = 'Betöltés…'
@@ -162,6 +166,24 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       el.className = 'lk-msg-error'
       el.style.padding = '8px 0'
       el.textContent = 'Nem sikerült betölteni az adatokat. Frissítse az oldalt.'
+      container.appendChild(el)
+      return
+    }
+
+    if (venueNotFound) {
+      const el = document.createElement('p')
+      el.className = 'lk-msg-error'
+      el.style.padding = '8px 0'
+      el.textContent = `Helyszín nem található: "${VENUE_PARAM}"`
+      container.appendChild(el)
+      return
+    }
+
+    if (venueGroupNotFound) {
+      const el = document.createElement('p')
+      el.className = 'lk-msg-error'
+      el.style.padding = '8px 0'
+      el.textContent = `Helyszíncsoport nem található: "${VENUE_GROUP_PARAM}"`
       container.appendChild(el)
       return
     }
@@ -461,6 +483,14 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (!content) return
     content.innerHTML = ''
 
+    if (!date) {
+      const msg = document.createElement('p')
+      msg.className = 'lk-msg-muted'
+      msg.textContent = 'Először válasszon dátumot.'
+      content.appendChild(msg)
+      return
+    }
+
     if (USE_SLOTS && slotsLoading) {
       const wrap = document.createElement('div')
       wrap.className = 'lk-slots-loading'
@@ -649,6 +679,11 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       const groupSlug = VENUE_PARAM ? undefined : (VENUE_GROUP_PARAM ?? undefined)
       venues = await fetchVenues(groupSlug)
       venuesLoading = false
+      if (VENUE_PARAM && !venues.find(v => v.slug === VENUE_PARAM)) {
+        venueNotFound = true
+      } else if (VENUE_GROUP_PARAM && !VENUE_PARAM && venues.length === 0) {
+        venueGroupNotFound = true
+      }
     } catch {
       venuesLoading = false
       venuesError = true

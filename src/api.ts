@@ -5,6 +5,8 @@ export interface VenueSettings {
   min_duration_minutes: number
   max_duration_minutes: number
   max_party_size: number
+  open_time?: string
+  close_time?: string
 }
 
 export interface Venue {
