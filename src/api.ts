@@ -55,22 +55,28 @@ export async function fetchVenues(groupSlug?: string): Promise<Venue[]> {
 }
 
 export async function submitReservation(payload: ReservationPayload): Promise<ReservationResult> {
+  console.log('[lk] POST /reservations payload:', payload)
   const res = await fetch(`${base}/reservations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  console.log('[lk] response status:', res.status)
   if (!res.ok) {
-    let message = ''
-    try {
-      const json = await res.json()
-      message = (json.message as string) ?? (json.error as string) ?? ''
-    } catch { /* empty */ }
-    const err = new Error(message || String(res.status)) as Error & { status: number }
+    let body: unknown = null
+    try { body = await res.json() } catch { /* empty */ }
+    console.error('[lk] error body:', body)
+    const message = (body as { message?: string; error?: string } | null)?.message
+      ?? (body as { error?: string } | null)?.error
+      ?? ''
+    const err = new Error(message || String(res.status)) as Error & { status: number; body?: unknown }
     err.status = res.status
+    err.body = body
     throw err
   }
-  return res.json() as Promise<ReservationResult>
+  const json = await res.json()
+  console.log('[lk] success body:', json)
+  return json as ReservationResult
 }
 
 function getDomain(): string {

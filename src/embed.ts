@@ -769,11 +769,12 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       render()
     } catch (err: unknown) {
       submitting = false
-      const e = err as Error & { status?: number }
+      const e = err as Error & { status?: number; body?: unknown }
       const status = e.status ?? 0
       const msg = e.message ?? ''
       const reason = toErrorReason(status, msg)
 
+      console.error('[lk] submit failed:', { status, message: msg, body: e.body, error: err })
       track('error', { code: status, reason })
 
       if (reason === 'party_size_exceeded') submitError = t('errParty')
