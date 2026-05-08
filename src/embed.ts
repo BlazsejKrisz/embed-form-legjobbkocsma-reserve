@@ -1,12 +1,15 @@
 import rawCSS from './style.css?raw'
 import {
   fetchVenues,
-  fetchAvailability,
   submitReservation,
   track,
   toErrorReason,
 } from './api'
-import type { Venue, Slot, ReservationResult } from './api'
+import type { Venue, ReservationResult } from './api'
+import { t, getLang } from './i18n'
+import { COUNTRIES } from './countries'
+import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js/min'
+import type { CountryCode } from 'libphonenumber-js/min'
 
 // Inject styles once per page load
 if (!document.getElementById('lk-embed-styles')) {
@@ -19,14 +22,12 @@ if (!document.getElementById('lk-embed-styles')) {
 interface AppConfig {
   venueSlug: string | null
   venueGroup: string | null
-  useSlots: boolean
   open: string
   close: string
   privacyUrl: string | null
 }
 
 function mountApp(container: HTMLElement, cfg: AppConfig): void {
-  const USE_SLOTS = cfg.useSlots
   const VENUE_PARAM = cfg.venueSlug
   const VENUE_GROUP_PARAM = cfg.venueGroup
   const OPEN_PARAM = cfg.open
@@ -46,14 +47,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   let fullName = ''
   let email = ''
   let phone = ''
+  let phoneCountry = 'HU'
   let message = ''
-
-  let slots: Slot[] = []
-  let slotsLoading = false
-  let slotsError = false
-  let slotsEmpty = false
-  let useSlotPicker = false
-  let slotsRequestId = 0
 
   let honeypot = ''
   let gdprAccepted = false
@@ -82,7 +77,21 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
   }
 
   function isPhoneValid(v: string): boolean {
-    return v === '' || /^\+?[\d\s\-(). ]{6,20}$/.test(v)
+    if (!v) return false
+    try {
+      return isValidPhoneNumber(v, phoneCountry as CountryCode)
+    } catch {
+      return false
+    }
+  }
+
+  function phoneToE164(v: string): string | null {
+    try {
+      const parsed = parsePhoneNumberFromString(v, phoneCountry as CountryCode)
+      return parsed?.isValid() ? parsed.format('E.164') : null
+    } catch {
+      return null
+    }
   }
 
   function isValid(): boolean {
@@ -95,9 +104,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (!fullName.trim() || fullName.trim().length > 100) return false
     const em = email.trim()
     const ph = phone.trim()
-    if (!em && !ph) return false
-    if (em && !isEmailValid(em)) return false
-    if (ph && !isPhoneValid(ph)) return false
+    if (!em || !isEmailValid(em)) return false
+    if (!ph || !isPhoneValid(ph)) return false
     return true
   }
 
@@ -187,7 +195,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (venuesLoading) {
       const el = document.createElement('div')
       el.className = 'lk-loading'
-      el.textContent = 'Betöltés…'
+      el.textContent = t('loading')
       container.appendChild(el)
       return
     }
@@ -196,7 +204,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       const el = document.createElement('p')
       el.className = 'lk-msg-error'
       el.style.padding = '8px 0'
-      el.textContent = 'Nem sikerült betölteni az adatokat. Frissítse az oldalt.'
+      el.textContent = t('loadError')
       container.appendChild(el)
       return
     }
@@ -205,7 +213,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       const el = document.createElement('p')
       el.className = 'lk-msg-error'
       el.style.padding = '8px 0'
-      el.textContent = `Helyszín nem található: "${VENUE_PARAM}"`
+      el.textContent = `${t('venueNotFound')}: "${VENUE_PARAM}"`
       container.appendChild(el)
       return
     }
@@ -214,7 +222,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       const el = document.createElement('p')
       el.className = 'lk-msg-error'
       el.style.padding = '8px 0'
-      el.textContent = `Helyszíncsoport nem található: "${VENUE_GROUP_PARAM}"`
+      el.textContent = `${t('venueGroupNotFound')}: "${VENUE_GROUP_PARAM}"`
       container.appendChild(el)
       return
     }
@@ -239,14 +247,14 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
     const title = document.createElement('p')
     title.className = 'lk-success-title'
-    title.textContent = confirmed ? 'Foglalás visszaigazolva!' : 'Köszönjük!'
+    title.textContent = confirmed ? t('successTitleConfirmed') : t('successTitlePending')
     wrap.appendChild(title)
 
     const body = document.createElement('p')
     body.className = 'lk-success-body'
     body.textContent = confirmed
-      ? `Visszaigazolót küldtünk emailben. (#${r.reservation_id})`
-      : 'Foglalási igényét megkaptuk. Kollégáink hamarosan visszaigazolják az asztalt.'
+      ? `${t('successBodyConfirmed')} (#${r.reservation_id})`
+      : t('successBodyPending')
     wrap.appendChild(body)
 
     container.appendChild(wrap)
@@ -269,21 +277,16 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     form.appendChild(row1)
 
     form.appendChild(buildTimeField())
-    form.appendChild(buildInputField('lk-full-name', 'Teljes név', 'text', 'Kiss János', true, () => fullName, v => { fullName = v }))
+    form.appendChild(buildInputField('lk-full-name', t('fullNameLabel'), 'text', t('fullNamePlaceholder'), true, () => fullName, v => { fullName = v }))
 
     const row2 = document.createElement('div')
     row2.className = 'lk-row lk-row--contact'
-    row2.appendChild(buildInputField('lk-email', 'E-mail', 'email', 'pelda@email.hu', false, () => email, v => { email = v }))
-    row2.appendChild(buildInputField('lk-phone', 'Telefon', 'tel', '+36301234567', false, () => phone, v => { phone = v }))
+    row2.appendChild(buildInputField('lk-email', t('emailLabel'), 'email', t('emailPlaceholder'), true, () => email, v => { email = v }))
+    row2.appendChild(buildPhoneField())
     form.appendChild(row2)
 
     form.appendChild(buildMessageField())
     form.appendChild(buildGdprField())
-
-    const note = document.createElement('p')
-    note.className = 'lk-note'
-    note.textContent = '* E-mail vagy telefonszám megadása kötelező.'
-    form.appendChild(note)
 
     const submitWrap = document.createElement('div')
     submitWrap.className = 'lk-field lk-field--submit'
@@ -293,7 +296,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     btn.type = 'submit'
     btn.className = 'lk-btn'
     btn.id = 'lk-submit'
-    btn.textContent = 'Foglalás küldése'
+    btn.textContent = t('submitBtn')
     submitWrap.appendChild(btn)
     form.appendChild(submitWrap)
 
@@ -333,20 +336,20 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const label = document.createElement('label')
     label.htmlFor = 'lk-venue'
     label.className = 'lk-label lk-label--venue'
-    label.innerHTML = 'Helyszín <span class="lk-req">*</span>'
+    label.innerHTML = `${t('venueLabel')} <span class="lk-req">*</span>`
     wrap.appendChild(label)
 
     const select = document.createElement('select')
     select.className = 'lk-select'
     select.id = 'lk-venue'
-    select.appendChild(new Option('Válasszon helyszínt…', ''))
+    select.appendChild(new Option(t('venuePlaceholder'), ''))
 
     if (venuesLoading) {
       select.disabled = true
-      select.options[0].text = 'Betöltés…'
+      select.options[0].text = t('loading')
     } else if (venuesError) {
       select.disabled = true
-      select.options[0].text = 'Nem sikerült betölteni a helyszíneket.'
+      select.options[0].text = t('venueLoadError')
     } else {
       for (const v of venues) select.appendChild(new Option(v.name, v.slug))
       if (selectedVenueSlug) select.value = selectedVenueSlug
@@ -354,8 +357,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
     select.addEventListener('change', () => {
       selectedVenueSlug = select.value
-      date = ''; time = ''; slots = []
-      slotsLoading = false; slotsError = false; slotsEmpty = false; useSlotPicker = false
+      date = ''; time = ''
       render()
     })
 
@@ -370,7 +372,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const label = document.createElement('label')
     label.htmlFor = 'lk-date'
     label.className = 'lk-label lk-label--date'
-    label.innerHTML = 'Dátum <span class="lk-req">*</span>'
+    label.innerHTML = `${t('dateLabel')} <span class="lk-req">*</span>`
     wrap.appendChild(label)
 
     const input = document.createElement('input')
@@ -384,9 +386,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
     input.addEventListener('change', () => {
       date = input.value
-      time = ''; slots = []
-      slotsLoading = false; slotsError = false; slotsEmpty = false; useSlotPicker = false
-      maybeFetchSlots()
+      time = ''
       updateTimeContent()
       updateSubmitBtn()
     })
@@ -402,7 +402,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const label = document.createElement('label')
     label.htmlFor = 'lk-party'
     label.className = 'lk-label lk-label--party-size'
-    label.innerHTML = 'Létszám <span class="lk-req">*</span>'
+    label.innerHTML = `${t('partyLabel')} <span class="lk-req">*</span>`
     wrap.appendChild(label)
 
     const input = document.createElement('input')
@@ -417,10 +417,6 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
     input.addEventListener('input', () => {
       partySize = input.value
-      time = ''; slots = []
-      slotsLoading = false; slotsError = false; slotsEmpty = false; useSlotPicker = false
-      maybeFetchSlots()
-      updateTimeContent()
       updateSubmitBtn()
     })
 
@@ -435,7 +431,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const label = document.createElement('label')
     label.htmlFor = 'lk-time'
     label.className = 'lk-label lk-label--time'
-    label.innerHTML = 'Időpont <span class="lk-req">*</span>'
+    label.innerHTML = `${t('timeLabel')} <span class="lk-req">*</span>`
     wrap.appendChild(label)
 
     const content = document.createElement('div')
@@ -485,6 +481,53 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     return wrap
   }
 
+  function buildPhoneField(): HTMLElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'lk-field lk-field--phone'
+
+    const label = document.createElement('label')
+    label.htmlFor = 'lk-phone'
+    label.className = 'lk-label lk-label--phone'
+    label.innerHTML = `${t('phoneLabel')} <span class="lk-req">*</span>`
+    wrap.appendChild(label)
+
+    const row = document.createElement('div')
+    row.className = 'lk-phone-row'
+
+    const countrySelect = document.createElement('select')
+    countrySelect.className = 'lk-select lk-select--country'
+    countrySelect.id = 'lk-phone-country'
+    countrySelect.setAttribute('aria-label', t('phoneLabel'))
+    const lang = getLang()
+    for (const c of COUNTRIES) {
+      const opt = new Option(`${c.flag} ${c.name[lang]} (${c.dial})`, c.code)
+      countrySelect.appendChild(opt)
+    }
+    countrySelect.value = phoneCountry
+    countrySelect.addEventListener('change', () => {
+      phoneCountry = countrySelect.value
+      updateSubmitBtn()
+    })
+    row.appendChild(countrySelect)
+
+    const input = document.createElement('input')
+    input.type = 'tel'
+    input.className = 'lk-input lk-input--phone'
+    input.id = 'lk-phone'
+    input.placeholder = t('phonePlaceholder')
+    input.value = phone
+    input.autocomplete = 'tel'
+    input.maxLength = 20
+    input.addEventListener('input', () => {
+      phone = input.value
+      updateSubmitBtn()
+    })
+    row.appendChild(input)
+
+    wrap.appendChild(row)
+    return wrap
+  }
+
   function buildMessageField(): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'lk-field lk-field--message'
@@ -492,13 +535,13 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const label = document.createElement('label')
     label.htmlFor = 'lk-message'
     label.className = 'lk-label lk-label--message'
-    label.textContent = 'Megjegyzés'
+    label.textContent = t('messageLabel')
     wrap.appendChild(label)
 
     const textarea = document.createElement('textarea')
     textarea.className = 'lk-textarea'
     textarea.id = 'lk-message'
-    textarea.placeholder = 'Különleges kérés, megjegyzés…'
+    textarea.placeholder = t('messagePlaceholder')
     textarea.maxLength = 1000
     textarea.value = message
 
@@ -522,16 +565,16 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     label.className = 'lk-consent-label'
     label.htmlFor = 'lk-gdpr'
 
-    label.append('Elfogadom, hogy a foglalás kezeléséhez a megadott adataimat kezeljék')
+    label.append(t('consentLead'))
     if (PRIVACY_URL) {
-      label.append(' az ')
+      label.append(t('consentLinkPrefix'))
       const link = document.createElement('a')
       link.href = PRIVACY_URL
       link.target = '_blank'
       link.rel = 'noopener noreferrer'
-      link.textContent = 'adatkezelési tájékoztató'
+      link.textContent = t('consentLinkText')
       label.appendChild(link)
-      label.append(' szerint')
+      label.append(t('consentLinkSuffix'))
     }
     label.append('.')
 
@@ -555,59 +598,17 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (!date) {
       const msg = document.createElement('p')
       msg.className = 'lk-msg-muted'
-      msg.textContent = 'Először válasszon dátumot.'
+      msg.textContent = t('pickDateFirst')
       content.appendChild(msg)
       return
     }
 
-    if (USE_SLOTS && slotsLoading) {
-      const wrap = document.createElement('div')
-      wrap.className = 'lk-slots-loading'
-      wrap.innerHTML = '<div class="lk-spinner"></div><span>Időpontok betöltése…</span>'
-      content.appendChild(wrap)
-      return
-    }
-
-    if (USE_SLOTS && useSlotPicker && slots.length > 0) {
-      const select = document.createElement('select')
-      select.className = 'lk-select lk-select--slots'
-      select.id = 'lk-time'
-      select.appendChild(new Option('Válasszon időpontot…', ''))
-
-      for (const slot of slots) {
-        const label = new Date(slot.starts_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })
-        select.appendChild(new Option(label, slot.starts_at))
-      }
-
-      if (time) select.value = time
-      select.addEventListener('change', () => { time = select.value; updateSubmitBtn() })
-      content.appendChild(select)
-      return
-    }
-
-    if (USE_SLOTS && slotsEmpty) {
-      const msg = document.createElement('p')
-      msg.className = 'lk-msg-muted'
-      msg.style.marginBottom = '6px'
-      msg.textContent = 'Erre a napra nincs szabad időpont, de igényét így is elküldheti.'
-      content.appendChild(msg)
-    }
-
-    if (USE_SLOTS && slotsError) {
-      const msg = document.createElement('p')
-      msg.className = 'lk-msg-error'
-      msg.style.marginBottom = '6px'
-      msg.textContent = 'Nem sikerült betölteni az időpontokat.'
-      content.appendChild(msg)
-    }
-
-    // Generated 30-min select
     const timeOptions = generateTimeSlots()
 
     if (timeOptions.length === 0) {
       const msg = document.createElement('p')
       msg.className = 'lk-msg-muted'
-      msg.textContent = 'Erre a napra már nincs foglalható időpont.'
+      msg.textContent = t('noSlots')
       content.appendChild(msg)
       return
     }
@@ -615,8 +616,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const select = document.createElement('select')
     select.className = 'lk-select lk-select--time'
     select.id = 'lk-time'
-    select.appendChild(new Option('Válasszon időpontot…', ''))
-    for (const t of timeOptions) select.appendChild(new Option(t, t))
+    select.appendChild(new Option(t('timePlaceholder'), ''))
+    for (const opt of timeOptions) select.appendChild(new Option(opt, opt))
     if (time && timeOptions.includes(time)) select.value = time
     select.addEventListener('change', () => { time = select.value; updateSubmitBtn() })
     content.appendChild(select)
@@ -626,7 +627,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const btn = document.getElementById('lk-submit') as HTMLButtonElement | null
     if (!btn) return
     btn.disabled = !isValid() || submitting
-    btn.textContent = submitting ? 'Küldés…' : 'Foglalás küldése'
+    btn.textContent = submitting ? t('submitting') : t('submitBtn')
   }
 
   function setSubmitError(msg: string | null): void {
@@ -641,45 +642,6 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     }
   }
 
-  // ── Slot fetch ────────────────────────────────────────────────────────
-
-  async function maybeFetchSlots(): Promise<void> {
-    if (!USE_SLOTS) return
-
-    const reqVenue = selectedVenueSlug
-    const reqDate = date
-    const reqParty = Number(partySize)
-
-    if (!reqVenue || !reqDate || !reqParty || reqParty < 1) return
-
-    const reqId = ++slotsRequestId
-    slotsLoading = true; slotsError = false; slotsEmpty = false; useSlotPicker = false; slots = []
-    updateTimeContent()
-
-    try {
-      const fetched = await fetchAvailability(reqVenue, reqDate, reqParty)
-      if (reqId !== slotsRequestId) return
-
-      slots = fetched
-      slotsLoading = false
-
-      if (fetched.length === 0) {
-        slotsEmpty = true; useSlotPicker = false
-        track('slots_empty')
-      } else {
-        useSlotPicker = true
-        track('slots_loaded', { slot_count: fetched.length })
-      }
-    } catch {
-      if (reqId !== slotsRequestId) return
-      slotsLoading = false; slotsError = true; useSlotPicker = false
-      track('error', { code: 0, reason: 'unknown' })
-    }
-
-    updateTimeContent()
-    updateSubmitBtn()
-  }
-
   // ── Submit ────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: Event): Promise<void> {
@@ -691,9 +653,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     updateSubmitBtn()
     setSubmitError(null)
 
-    const startsAt = USE_SLOTS && useSlotPicker
-      ? time
-      : new Date(`${date}T${time}:00`).toISOString()
+    const startsAt = new Date(`${date}T${time}:00`).toISOString()
+    const phoneE164 = phoneToE164(phone) ?? sanitize(phone, 20)
 
     const payload = {
       venue_slug: selectedVenueSlug,
@@ -701,13 +662,13 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       party_size: Number(partySize),
       customer: {
         full_name: sanitize(fullName, 100),
-        ...(email.trim() ? { email: sanitize(email, 254) } : {}),
-        ...(phone.trim() ? { phone: sanitize(phone, 20) } : {}),
+        email: sanitize(email, 254),
+        phone: phoneE164,
       },
       ...(message.trim() ? { message: sanitize(message, 1000) } : {}),
       consents: {
         reservation_data_processing: true,
-        reservation_data_processing_text: 'Elfogadom, hogy a foglalás kezeléséhez a megadott adataimat kezeljék.',
+        reservation_data_processing_text: `${t('consentLead')}.`,
         ...(PRIVACY_URL ? { privacy_url: PRIVACY_URL } : {}),
       },
       _hp: honeypot,
@@ -738,10 +699,10 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
       track('error', { code: status, reason })
 
-      if (reason === 'party_size_exceeded') submitError = 'A megadott létszám meghaladja a helyszín maximumát.'
-      else if (reason === 'booking_disabled') submitError = 'A helyszín jelenleg nem fogad foglalásokat.'
-      else if (reason === 'venue_not_found') submitError = 'A helyszín nem található.'
-      else submitError = 'Hiba történt. Kérjük, próbálja újra később.'
+      if (reason === 'party_size_exceeded') submitError = t('errParty')
+      else if (reason === 'booking_disabled') submitError = t('errDisabled')
+      else if (reason === 'venue_not_found') submitError = t('errVenue')
+      else submitError = t('errGeneric')
 
       updateSubmitBtn()
       setSubmitError(submitError)
@@ -786,7 +747,6 @@ function autoMount(): void {
     mountApp(el, {
       venueSlug: el.dataset.lkVenue ?? null,
       venueGroup: el.dataset.lkGroup ?? null,
-      useSlots: el.dataset.lkSlots === '1',
       open: el.dataset.lkOpen ?? '10:00',
       close: el.dataset.lkClose ?? '23:00',
       privacyUrl: el.dataset.lkPrivacyUrl ?? null,

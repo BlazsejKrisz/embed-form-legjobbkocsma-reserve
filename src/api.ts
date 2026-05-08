@@ -16,19 +16,14 @@ export interface Venue {
   venue_settings: VenueSettings
 }
 
-export interface Slot {
-  starts_at: string
-  ends_at: string
-}
-
 export interface ReservationPayload {
   venue_slug: string
   starts_at: string
   party_size: number
   customer: {
     full_name: string
-    email?: string
-    phone?: string
+    email: string
+    phone: string
   }
   message?: string
   consents?: {
@@ -57,21 +52,6 @@ export async function fetchVenues(groupSlug?: string): Promise<Venue[]> {
   if (!res.ok) throw new Error(`venues:${res.status}`)
   const json = await res.json()
   return json.data as Venue[]
-}
-
-export async function fetchAvailability(
-  venueSlug: string,
-  date: string,
-  partySize: number,
-): Promise<Slot[]> {
-  const url = new URL(`${base}/availability`)
-  url.searchParams.set('venue_slug', venueSlug)
-  url.searchParams.set('date', date)
-  url.searchParams.set('party_size', String(partySize))
-  const res = await fetch(url.toString())
-  if (!res.ok) throw new Error(`availability:${res.status}`)
-  const json = await res.json()
-  return json.slots as Slot[]
 }
 
 export async function submitReservation(payload: ReservationPayload): Promise<ReservationResult> {

@@ -101,6 +101,26 @@ body {
   resize: vertical;
 }
 
+/* ── Phone field with country selector ───────────────────── */
+
+.lk-phone-row {
+  display: flex;
+  gap: 6px;
+}
+
+.lk-select--country {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 130px;
+  padding-right: 26px;
+  background-position: right 8px center;
+}
+
+.lk-input--phone {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* ── Submit button ───────────────────────────────────────── */
 
 .lk-btn {
