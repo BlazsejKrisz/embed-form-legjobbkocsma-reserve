@@ -494,21 +494,98 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     const row = document.createElement('div')
     row.className = 'lk-phone-row'
 
-    const countrySelect = document.createElement('select')
-    countrySelect.className = 'lk-select lk-select--country'
-    countrySelect.id = 'lk-phone-country'
-    countrySelect.setAttribute('aria-label', t('phoneLabel'))
     const lang = getLang()
+
+    const picker = document.createElement('div')
+    picker.className = 'lk-country-picker'
+    picker.tabIndex = 0
+    picker.setAttribute('role', 'combobox')
+    picker.setAttribute('aria-expanded', 'false')
+    picker.setAttribute('aria-haspopup', 'listbox')
+    picker.setAttribute('aria-label', t('phoneLabel'))
+
+    const trigger = document.createElement('div')
+    trigger.className = 'lk-country-trigger'
+    const triggerCurrent = COUNTRIES.find(c => c.code === phoneCountry) ?? COUNTRIES[0]
+    trigger.innerHTML = `<span class="lk-country-flag">${triggerCurrent.flag}</span><span class="lk-country-dial">${triggerCurrent.dial}</span>`
+    picker.appendChild(trigger)
+
+    const dropdown = document.createElement('div')
+    dropdown.className = 'lk-country-dropdown'
+    dropdown.setAttribute('role', 'listbox')
+
+    const search = document.createElement('input')
+    search.type = 'text'
+    search.className = 'lk-country-search'
+    search.placeholder = lang === 'hu' ? 'Keresés…' : 'Search…'
+    search.autocomplete = 'off'
+    search.addEventListener('click', (e) => e.stopPropagation())
+    search.addEventListener('input', () => filterOptions(search.value))
+    dropdown.appendChild(search)
+
+    const list = document.createElement('div')
+    list.className = 'lk-country-list'
+    dropdown.appendChild(list)
+
+    const optionEls: HTMLButtonElement[] = []
     for (const c of COUNTRIES) {
-      const opt = new Option(`${c.flag} ${c.name[lang]} (${c.dial})`, c.code)
-      countrySelect.appendChild(opt)
+      const opt = document.createElement('button')
+      opt.type = 'button'
+      opt.className = 'lk-country-option'
+      opt.setAttribute('role', 'option')
+      opt.dataset.code = c.code
+      opt.dataset.search = `${c.name.hu} ${c.name.en} ${c.dial}`.toLowerCase()
+      opt.innerHTML = `<span class="lk-country-flag">${c.flag}</span><span class="lk-country-name">${c.name[lang]}</span><span class="lk-country-dial">${c.dial}</span>`
+      opt.addEventListener('click', () => {
+        phoneCountry = c.code
+        trigger.innerHTML = `<span class="lk-country-flag">${c.flag}</span><span class="lk-country-dial">${c.dial}</span>`
+        closePicker()
+        updateSubmitBtn()
+      })
+      list.appendChild(opt)
+      optionEls.push(opt)
     }
-    countrySelect.value = phoneCountry
-    countrySelect.addEventListener('change', () => {
-      phoneCountry = countrySelect.value
-      updateSubmitBtn()
+    picker.appendChild(dropdown)
+
+    function filterOptions(q: string): void {
+      const needle = q.trim().toLowerCase()
+      for (const el of optionEls) {
+        const match = !needle || (el.dataset.search ?? '').includes(needle)
+        el.style.display = match ? '' : 'none'
+      }
+    }
+
+    function openPicker(): void {
+      picker.classList.add('lk-country-picker--open')
+      picker.setAttribute('aria-expanded', 'true')
+      search.value = ''
+      filterOptions('')
+      setTimeout(() => search.focus(), 0)
+    }
+    function closePicker(): void {
+      picker.classList.remove('lk-country-picker--open')
+      picker.setAttribute('aria-expanded', 'false')
+    }
+
+    trigger.addEventListener('click', () => {
+      if (picker.classList.contains('lk-country-picker--open')) closePicker()
+      else openPicker()
     })
-    row.appendChild(countrySelect)
+
+    picker.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePicker()
+      else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        if (picker.classList.contains('lk-country-picker--open')) closePicker()
+        else openPicker()
+      }
+    })
+
+    document.addEventListener('click', (e) => {
+      if (!picker.contains(e.target as Node)) closePicker()
+    })
+
+    row.appendChild(picker)
 
     const input = document.createElement('input')
     input.type = 'tel'
