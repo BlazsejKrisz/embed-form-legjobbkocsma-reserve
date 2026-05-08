@@ -22,7 +22,7 @@ const STRINGS = {
   emailLabel: { hu: 'E-mail', en: 'Email' },
   emailPlaceholder: { hu: 'pelda@email.hu', en: 'example@email.com' },
   phoneLabel: { hu: 'Telefon', en: 'Phone' },
-  phonePlaceholder: { hu: '+36301234567', en: '+36301234567' },
+  phonePlaceholder: { hu: '30 123 4567', en: '30 123 4567' },
   messageLabel: { hu: 'Megjegyzés', en: 'Message' },
   messagePlaceholder: { hu: 'Különleges kérés, megjegyzés…', en: 'Special request, comment…' },
 
