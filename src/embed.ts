@@ -780,6 +780,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       if (reason === 'party_size_exceeded') submitError = t('errParty')
       else if (reason === 'booking_disabled') submitError = t('errDisabled')
       else if (reason === 'venue_not_found') submitError = t('errVenue')
+      else if (reason === 'too_many_requests') submitError = t('errRateLimit')
       else submitError = t('errGeneric')
 
       updateSubmitBtn()

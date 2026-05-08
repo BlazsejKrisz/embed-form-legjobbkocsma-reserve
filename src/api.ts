@@ -88,6 +88,7 @@ function getDomain(): string {
 }
 
 export function toErrorReason(status: number, message: string): string {
+  if (status === 429) return 'too_many_requests'
   if (status === 422 && message.includes('party size')) return 'party_size_exceeded'
   if (status === 422 && message.includes('not accepting')) return 'booking_disabled'
   if (status === 404) return 'venue_not_found'

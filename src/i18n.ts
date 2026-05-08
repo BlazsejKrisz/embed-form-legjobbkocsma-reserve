@@ -42,6 +42,7 @@ const STRINGS = {
   errParty: { hu: 'A megadott létszám meghaladja a helyszín maximumát.', en: 'The party size exceeds the venue maximum.' },
   errDisabled: { hu: 'A helyszín jelenleg nem fogad foglalásokat.', en: 'The venue is currently not accepting reservations.' },
   errVenue: { hu: 'A helyszín nem található.', en: 'Venue not found.' },
+  errRateLimit: { hu: 'Túl sok próbálkozás. Kérjük, várjon egy percet és próbálja újra.', en: 'Too many attempts. Please wait a minute and try again.' },
   errGeneric: { hu: 'Hiba történt. Kérjük, próbálja újra később.', en: 'An error occurred. Please try again later.' },
 } as const
 
