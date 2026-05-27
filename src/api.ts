@@ -4,16 +4,27 @@ export interface VenueSettings {
   max_advance_booking_days: number
   min_duration_minutes: number
   max_duration_minutes: number
+  default_duration_minutes: number
   max_party_size: number
-  open_time?: string
-  close_time?: string
+}
+
+// Per-weekday opening hours (ISO weekday: 1 = Monday … 7 = Sunday).
+// open_time/close_time are wall-clock "HH:MM:SS" in the venue's timezone;
+// close_time <= open_time means the venue closes after midnight.
+export interface OpenHours {
+  weekday: number
+  is_closed: boolean
+  open_time: string
+  close_time: string
 }
 
 export interface Venue {
   id: number
   name: string
   slug: string
+  timezone?: string
   venue_settings: VenueSettings
+  venue_open_hours?: OpenHours[]
 }
 
 export interface ReservationPayload {
@@ -89,6 +100,8 @@ function getDomain(): string {
 
 export function toErrorReason(status: number, message: string): string {
   if (status === 429) return 'too_many_requests'
+  if (status === 422 && message.includes('too soon')) return 'booking_too_soon'
+  if (status === 422 && message.includes('too far')) return 'booking_too_far'
   if (status === 422 && message.includes('party size')) return 'party_size_exceeded'
   if (status === 422 && message.includes('not accepting')) return 'booking_disabled'
   if (status === 404) return 'venue_not_found'

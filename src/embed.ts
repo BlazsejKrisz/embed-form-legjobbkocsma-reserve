@@ -7,6 +7,7 @@ import {
 } from './api'
 import type { Venue, ReservationResult } from './api'
 import { t, getLang } from './i18n'
+import { pushEnhancedFormSubmission } from './tracking'
 import { COUNTRIES } from './countries'
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import type { CountryCode } from 'libphonenumber-js/min'
@@ -22,17 +23,18 @@ if (!document.getElementById('lk-embed-styles')) {
 interface AppConfig {
   venueSlug: string | null
   venueGroup: string | null
-  open: string
-  close: string
   privacyUrl: string | null
+  formId: string
 }
 
 function mountApp(container: HTMLElement, cfg: AppConfig): void {
   const VENUE_PARAM = cfg.venueSlug
   const VENUE_GROUP_PARAM = cfg.venueGroup
-  const OPEN_PARAM = cfg.open
-  const CLOSE_PARAM = cfg.close
   const PRIVACY_URL = cfg.privacyUrl
+  const FORM_ID = cfg.formId
+  // Default booking timezone. The backend computes slots in the venue's own
+  // timezone (DB default Europe/Budapest); we only need it to label slots.
+  const DEFAULT_TZ = 'Europe/Budapest'
 
   // ── State ─────────────────────────────────────────────────────────────
 
@@ -42,9 +44,14 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
   let selectedVenueSlug = VENUE_PARAM ?? ''
   let date = todayStr()
-  let time = ''
+  let time = '' // selected slot's absolute ISO starts_at (from the availability API)
   let partySize = ''
-  let fullName = ''
+
+  // Bookable time slots for the selected date: { iso = absolute instant, label = HH:MM }
+  let slots: { iso: string; label: string }[] = []
+  let venueTimezone = DEFAULT_TZ
+  let firstName = ''
+  let lastName = ''
   let email = ''
   let phone = ''
   let phoneCountry = 'HU'
@@ -101,7 +108,10 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     if (!gdprAccepted) return false
     const ps = Number(partySize)
     if (!partySize || !Number.isInteger(ps) || ps < 1 || ps > 500) return false
-    if (!fullName.trim() || fullName.trim().length > 100) return false
+    const fn = firstName.trim()
+    const ln = lastName.trim()
+    if (!fn || fn.length > 60) return false
+    if (!ln || ln.length > 60) return false
     const em = email.trim()
     const ph = phone.trim()
     if (!em || !isEmailValid(em)) return false
@@ -122,31 +132,93 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     return d.toISOString().slice(0, 10)
   }
 
-  function generateTimeSlots(): string[] {
-    const venue = getVenue()
-    const minDuration = venue?.venue_settings.min_duration_minutes ?? 60
-    const minNotice = venue?.venue_settings.min_notice_minutes ?? 60
+  function isoWeekday(d: string): number {
+    const [y, m, day] = d.split('-').map(Number)
+    const wd = new Date(Date.UTC(y, m - 1, day)).getUTCDay() // 0=Sun … 6=Sat
+    return wd === 0 ? 7 : wd
+  }
 
-    const toMin = (t: string) => {
-      const [h, m] = t.split(':').map(Number)
+  function addDateDays(d: string, n: number): string {
+    const [y, m, day] = d.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, day + n)).toISOString().slice(0, 10)
+  }
+
+  // UTC offset (ms) of `tz` at a given absolute instant.
+  function tzOffsetMs(instant: Date, tz: string): number {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+    const o: Record<string, string> = {}
+    for (const p of dtf.formatToParts(instant)) if (p.type !== 'literal') o[p.type] = p.value
+    let hour = Number(o.hour)
+    if (hour === 24) hour = 0 // some engines emit "24" for midnight
+    const asUTC = Date.UTC(+o.year, +o.month - 1, +o.day, hour, +o.minute, +o.second)
+    return asUTC - instant.getTime()
+  }
+
+  // Absolute instant for a wall-clock time in the venue's timezone (DST-correct).
+  function zonedWallTimeToUtc(dateStr: string, hour: number, minute: number, tz: string): Date {
+    const [y, mo, d] = dateStr.split('-').map(Number)
+    const wallAsUTC = Date.UTC(y, mo - 1, d, hour, minute)
+    const off1 = tzOffsetMs(new Date(wallAsUTC), tz)
+    let utc = new Date(wallAsUTC - off1)
+    const off2 = tzOffsetMs(utc, tz)
+    if (off2 !== off1) utc = new Date(wallAsUTC - off2) // correct across a DST edge
+    return utc
+  }
+
+  // Builds the bookable slot list for the selected date straight from the
+  // venue's open hours: every 30 min from open until (close − default booking
+  // duration), so the whole reservation fits inside opening hours. Then it drops
+  // anything within the minimum-notice window. The notice check is a pure
+  // absolute-time comparison, so it is timezone-proof. No capacity check — an
+  // unavailable table is the backend's job (it routes to manual review).
+  function buildSlots(): { iso: string; label: string }[] {
+    const venue = getVenue()
+    if (!venue || !date) return []
+    venueTimezone = venue.timezone ?? DEFAULT_TZ
+
+    const oh = (venue.venue_open_hours ?? []).find(h => h.weekday === isoWeekday(date))
+    if (!oh || oh.is_closed) return []
+
+    const toMin = (s: string) => {
+      const [h, m] = s.split(':').map(Number)
       return h * 60 + m
     }
+    const dur = venue.venue_settings.default_duration_minutes || 120
+    const minNotice = venue.venue_settings.min_notice_minutes ?? 0
+    const openMin = toMin(oh.open_time)
+    let closeMin = toMin(oh.close_time)
+    if (closeMin <= openMin) closeMin += 1440 // closes after midnight
+    const lastStartMin = closeMin - dur
 
-    const open = venue?.venue_settings.open_time ?? OPEN_PARAM
-    const close = venue?.venue_settings.close_time ?? CLOSE_PARAM
-    const openMin = toMin(open)
-    const lastSlotMin = toMin(close) - minDuration
-
-    const now = new Date()
-    const isToday = date !== '' && date === todayStr()
-    const cutoffMin = isToday ? now.getHours() * 60 + now.getMinutes() + minNotice : -Infinity
-
-    const out: string[] = []
-    for (let m = openMin; m <= lastSlotMin; m += 30) {
-      if (m <= cutoffMin) continue
-      out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+    const cutoff = Date.now() + minNotice * 60_000
+    const out: { iso: string; label: string }[] = []
+    for (let m = openMin; m <= lastStartMin; m += 30) {
+      const dayOffset = Math.floor(m / 1440)
+      const minOfDay = m % 1440
+      const slotDate = dayOffset ? addDateDays(date, dayOffset) : date
+      const h = Math.floor(minOfDay / 60)
+      const mm = minOfDay % 60
+      const instant = zonedWallTimeToUtc(slotDate, h, mm, venueTimezone)
+      if (instant.getTime() < cutoff) continue
+      out.push({ iso: instant.toISOString(), label: `${pad2(h)}:${pad2(mm)}` })
     }
     return out
+  }
+
+  function pad2(n: number): string {
+    return String(n).padStart(2, '0')
+  }
+
+  // Recomputes slots for the current date and repaints the time field.
+  function refreshSlots(): void {
+    slots = buildSlots()
+    if (time && !slots.some(s => s.iso === time)) time = ''
+    renderTimeContent()
+    updateSubmitBtn()
   }
 
   function emit(type: string, detail: Record<string, unknown>): void {
@@ -228,8 +300,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     }
 
     container.appendChild(buildForm())
-    updateTimeContent()
-    updateSubmitBtn()
+    refreshSlots()
   }
 
   function renderSuccess(): void {
@@ -277,7 +348,12 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     form.appendChild(row1)
 
     form.appendChild(buildTimeField())
-    form.appendChild(buildInputField('lk-full-name', t('fullNameLabel'), 'text', t('fullNamePlaceholder'), true, () => fullName, v => { fullName = v }))
+
+    const nameRow = document.createElement('div')
+    nameRow.className = 'lk-row lk-row--name'
+    nameRow.appendChild(buildInputField('lk-first-name', t('firstNameLabel'), 'text', t('firstNamePlaceholder'), true, () => firstName, v => { firstName = v }, { autocomplete: 'given-name', maxLength: 60 }))
+    nameRow.appendChild(buildInputField('lk-last-name', t('lastNameLabel'), 'text', t('lastNamePlaceholder'), true, () => lastName, v => { lastName = v }, { autocomplete: 'family-name', maxLength: 60 }))
+    form.appendChild(nameRow)
 
     const row2 = document.createElement('div')
     row2.className = 'lk-row lk-row--contact'
@@ -386,9 +462,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
     input.addEventListener('change', () => {
       date = input.value
-      time = ''
-      updateTimeContent()
-      updateSubmitBtn()
+      refreshSlots()
     })
 
     wrap.appendChild(input)
@@ -449,6 +523,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     required: boolean,
     getValue: () => string,
     setValue: (v: string) => void,
+    opts?: { autocomplete?: string; maxLength?: number },
   ): HTMLElement {
     const slug = id.replace('lk-', '')
     const wrap = document.createElement('div')
@@ -468,9 +543,10 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     input.id = id
     input.placeholder = placeholder
     input.value = getValue()
-    if (type === 'email') { input.autocomplete = 'email'; input.maxLength = 254 }
-    else if (type === 'tel') { input.autocomplete = 'tel'; input.maxLength = 20 }
-    else { input.autocomplete = 'name'; input.maxLength = 100 }
+    input.autocomplete = (opts?.autocomplete
+      ?? (type === 'email' ? 'email' : type === 'tel' ? 'tel' : 'name')) as AutoFill
+    input.maxLength = opts?.maxLength
+      ?? (type === 'email' ? 254 : type === 'tel' ? 20 : 100)
 
     input.addEventListener('input', () => {
       setValue(input.value)
@@ -667,7 +743,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
 
   // ── Targeted updates ──────────────────────────────────────────────────
 
-  function updateTimeContent(): void {
+  function renderTimeContent(): void {
     const content = document.getElementById('lk-time-content')
     if (!content) return
     content.innerHTML = ''
@@ -679,10 +755,7 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       content.appendChild(msg)
       return
     }
-
-    const timeOptions = generateTimeSlots()
-
-    if (timeOptions.length === 0) {
+    if (slots.length === 0) {
       const msg = document.createElement('p')
       msg.className = 'lk-msg-muted'
       msg.textContent = t('noSlots')
@@ -694,8 +767,8 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     select.className = 'lk-select lk-select--time'
     select.id = 'lk-time'
     select.appendChild(new Option(t('timePlaceholder'), ''))
-    for (const opt of timeOptions) select.appendChild(new Option(opt, opt))
-    if (time && timeOptions.includes(time)) select.value = time
+    for (const s of slots) select.appendChild(new Option(s.label, s.iso))
+    if (time && slots.some(s => s.iso === time)) select.value = time
     select.addEventListener('change', () => { time = select.value; updateSubmitBtn() })
     content.appendChild(select)
   }
@@ -730,15 +803,18 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
     updateSubmitBtn()
     setSubmitError(null)
 
-    const startsAt = new Date(`${date}T${time}:00`).toISOString()
+    // `time` is the slot's absolute ISO instant straight from the availability
+    // API — no browser-timezone conversion, so it matches the backend exactly.
+    const startsAt = new Date(time).toISOString()
     const phoneE164 = phoneToE164(phone) ?? sanitize(phone, 20)
+    const fullName = sanitize(`${firstName.trim()} ${lastName.trim()}`.trim(), 100)
 
     const payload = {
       venue_slug: selectedVenueSlug,
       starts_at: startsAt,
       party_size: Number(partySize),
       customer: {
-        full_name: sanitize(fullName, 100),
+        full_name: fullName,
         email: sanitize(email, 254),
         phone: phoneE164,
       },
@@ -766,6 +842,17 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
           : {}),
       })
 
+      // Habibi-parity enhanced conversion event pushed to the host page's dataLayer.
+      pushEnhancedFormSubmission({
+        firstName,
+        lastName,
+        email: email.trim(),
+        phone: phoneE164,
+        partySize: Number(partySize),
+        formId: FORM_ID,
+        location: selectedVenueSlug,
+      }).catch(() => { /* tracking is best-effort */ })
+
       render()
     } catch (err: unknown) {
       submitting = false
@@ -781,7 +868,14 @@ function mountApp(container: HTMLElement, cfg: AppConfig): void {
       else if (reason === 'booking_disabled') submitError = t('errDisabled')
       else if (reason === 'venue_not_found') submitError = t('errVenue')
       else if (reason === 'too_many_requests') submitError = t('errRateLimit')
+      else if (reason === 'booking_too_soon') submitError = t('errTooSoon')
+      else if (reason === 'booking_too_far') submitError = t('errTooFar')
       else submitError = t('errGeneric')
+
+      // A "too soon" rejection means the picked slot has aged past the
+      // minimum-notice window while the form was open — drop stale slots so
+      // the customer re-picks a still-valid time.
+      if (reason === 'booking_too_soon') refreshSlots()
 
       updateSubmitBtn()
       setSubmitError(submitError)
@@ -826,9 +920,8 @@ function autoMount(): void {
     mountApp(el, {
       venueSlug: el.dataset.lkVenue ?? null,
       venueGroup: el.dataset.lkGroup ?? null,
-      open: el.dataset.lkOpen ?? '10:00',
-      close: el.dataset.lkClose ?? '23:00',
       privacyUrl: el.dataset.lkPrivacyUrl ?? null,
+      formId: el.dataset.lkFormId ?? 'booking-form',
     })
   })
 }
